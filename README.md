@@ -45,7 +45,7 @@ Sistem ini menghitung 8 indikator untuk setiap saham sebelum dimasukkan ke dalam
 ### Akses via Streamlit Community Cloud (Live Dashboard)
 Anda dapat langsung mengakses dashboard ini secara online tanpa perlu melakukan instalasi di komputer Anda. Klik tautan berikut:
 
-👉 **[Live Dashboard: IDX AI Market Surveillance](https://[MASUKKAN-LINK-STREAMLIT-ANDA-DISINI].streamlit.app)** 
+👉 **[Live Dashboard: IDX AI Market Surveillance](https://idx-ai-market-surveillance.streamlit.app/)** 
 
 *(Catatan: Ganti URL di atas dengan link hasil deploy Anda di Streamlit Community)*
 
