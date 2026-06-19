@@ -26,9 +26,11 @@ from src.data_pipeline import get_surveillance_data
 # =========================
 # Konfigurasi halaman
 # =========================
+from PIL import Image
+
 st.set_page_config(
     page_title="IDX AI — Pemantauan Pasar",
-    page_icon="",
+    page_icon=Image.open("assets/eye-protection.png"),
     layout="wide",
     initial_sidebar_state="expanded",
 )
