@@ -10,7 +10,7 @@
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
@@ -32,8 +32,13 @@ def fetch_live_data(tickers: List[str], days: int = HISTORY_DAYS) -> pd.DataFram
     Download data OHLCV untuk semua ticker dari Yahoo Finance.
     Mengembalikan DataFrame gabungan dengan kolom: date, open, high, low, close, volume, ticker.
     """
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days)
+    # Selalu gunakan zona waktu WIB (UTC+7)
+    wib_tz = timezone(timedelta(hours=7))
+    current_wib = datetime.now(wib_tz)
+    
+    # Tambahkan 1 hari karena parameter `end` di yfinance bersifat eksklusif (tidak dihitung)
+    end_date = current_wib + timedelta(days=1)
+    start_date = current_wib - timedelta(days=days)
 
     all_data = []
 
