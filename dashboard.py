@@ -10,7 +10,7 @@ import base64
 import os
 import plotly.graph_objects as go
 import plotly.express as px
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from streamlit_autorefresh import st_autorefresh
 
 from src.config import (
@@ -1015,7 +1015,8 @@ if df.empty:
     st.error("❌ Gagal mengambil data. Periksa koneksi internet Anda atau coba segarkan halaman.")
     st.stop()
 
-last_update = datetime.now().strftime("%d %b %Y, %H:%M WIB")
+wib_tz = timezone(timedelta(hours=7))
+last_update = datetime.now(wib_tz).strftime("%d %b %Y, %H:%M WIB")
 
 
 # ==========================================================
