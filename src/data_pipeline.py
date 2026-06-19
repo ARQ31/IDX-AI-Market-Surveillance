@@ -206,13 +206,13 @@ def _generate_anomaly_reason(row: pd.Series) -> str:
 
 
 def _classify_risk(score: float) -> str:
-    """Klasifikasi risk level berdasarkan normalized anomaly score."""
+    """Klasifikasi tingkat risiko berdasarkan skor anomali ternormalisasi."""
     if score >= RISK_THRESHOLDS["high"]:
-        return "High Risk"
+        return "Risiko Tinggi"
     elif score >= RISK_THRESHOLDS["medium"]:
-        return "Medium Risk"
+        return "Risiko Sedang"
     elif score >= RISK_THRESHOLDS["low"]:
-        return "Low Risk"
+        return "Risiko Rendah"
     else:
         return "Normal"
 

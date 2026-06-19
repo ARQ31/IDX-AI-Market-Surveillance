@@ -1,6 +1,6 @@
 # ==============================================================
-# IDX UMA — AI Market Surveillance Dashboard
-# Real-time market surveillance for Indonesian stocks
+# IDX UMA — Dasbor Pemantauan Pasar Berbasis AI
+# Pemantauan pasar secara real-time untuk saham Indonesia
 # ==============================================================
 
 import streamlit as st
@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
 from src.config import (
@@ -25,13 +25,13 @@ from src.data_pipeline import get_surveillance_data
 # Konfigurasi halaman
 # =========================
 st.set_page_config(
-    page_title="IDX AI Market Surveillance",
+    page_title="IDX AI — Pemantauan Pasar",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Auto-refresh setiap 5 menit
+# Penyegaran otomatis setiap 5 menit
 st_autorefresh(
     interval=AUTO_REFRESH_INTERVAL_MS,
     key="market_refresh",
@@ -39,14 +39,38 @@ st_autorefresh(
 
 
 # =========================
-# Custom CSS
+# Pemetaan label risiko ke Bahasa Indonesia
+# =========================
+RISK_CSS_CLASS = {
+    "Risiko Tinggi": "high",
+    "Risiko Sedang": "medium",
+    "Risiko Rendah": "low",
+    "Normal": "normal",
+}
+
+RISK_ICON = {
+    "Risiko Tinggi": "🔴",
+    "Risiko Sedang": "🟠",
+    "Risiko Rendah": "🟡",
+    "Normal": "🟢",
+}
+
+PERIOD_OPTIONS = {
+    "1B": 30,
+    "3B": 90,
+    "6B": 180,
+    "1T": 365,
+    "YTD": None,
+}
+
+
+# =========================
+# CSS Kustom
 # =========================
 st.markdown("""
 <style>
-    /* ===== Import Google Fonts ===== */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-    /* ===== Root Variables ===== */
     :root {
         --primary: #6C5CE7;
         --primary-light: #A29BFE;
@@ -67,7 +91,6 @@ st.markdown("""
         --gradient-hero: linear-gradient(135deg, #0F0C29 0%, #302B63 50%, #24243E 100%);
     }
 
-    /* ===== Global ===== */
     .stApp {
         font-family: 'Inter', sans-serif !important;
     }
@@ -150,36 +173,7 @@ st.markdown("""
         z-index: 1;
     }
 
-    /* ===== Disclaimer Box ===== */
-    .disclaimer-box {
-        background: linear-gradient(135deg, rgba(253, 203, 110, 0.08) 0%, rgba(255, 107, 107, 0.08) 100%);
-        border: 1px solid rgba(253, 203, 110, 0.3);
-        border-left: 4px solid var(--accent-warm);
-        border-radius: 12px;
-        padding: 1.2rem 1.5rem;
-        margin-bottom: 2rem;
-    }
-
-    .disclaimer-title {
-        font-size: 0.8rem;
-        font-weight: 700;
-        color: var(--accent-warm);
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 0.5rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .disclaimer-text {
-        font-size: 0.82rem;
-        color: var(--text-secondary);
-        line-height: 1.6;
-        margin: 0;
-    }
-
-    /* ===== KPI Cards ===== */
+    /* ===== Kartu KPI ===== */
     .kpi-card {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -237,7 +231,17 @@ st.markdown("""
     .kpi-value.red { color: var(--danger-light); }
     .kpi-value.gold { color: var(--accent-warm); }
 
-    /* ===== Section Headers ===== */
+    .kpi-trend {
+        font-size: 0.72rem;
+        font-weight: 600;
+        margin-top: 0.4rem;
+    }
+
+    .kpi-trend.positive { color: #55EFC4; }
+    .kpi-trend.negative { color: #FF8A8A; }
+    .kpi-trend.neutral { color: var(--text-secondary); }
+
+    /* ===== Header Bagian ===== */
     .section-header {
         display: flex;
         align-items: center;
@@ -269,21 +273,21 @@ st.markdown("""
         margin-left: auto;
     }
 
-    /* ===== Suspicious Stocks Table ===== */
+    /* ===== Tabel Saham Terindikasi ===== */
     .suspicious-table {
         width: 100%;
         border-collapse: separate;
         border-spacing: 0;
-        font-size: 0.88rem;
+        font-size: 0.85rem;
     }
 
     .suspicious-table th {
         background: var(--surface-light);
         color: var(--text-secondary);
         font-weight: 600;
-        padding: 0.8rem 1rem;
+        padding: 0.8rem 0.8rem;
         text-align: left;
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         text-transform: uppercase;
         letter-spacing: 0.5px;
         border-bottom: 1px solid var(--border);
@@ -293,7 +297,7 @@ st.markdown("""
     .suspicious-table th:last-child { border-radius: 0 10px 0 0; }
 
     .suspicious-table td {
-        padding: 0.75rem 1rem;
+        padding: 0.7rem 0.8rem;
         border-bottom: 1px solid rgba(108, 92, 231, 0.08);
         color: var(--text-primary);
         vertical-align: middle;
@@ -306,12 +310,12 @@ st.markdown("""
     .suspicious-table tr:last-child td:first-child { border-radius: 0 0 0 10px; }
     .suspicious-table tr:last-child td:last-child { border-radius: 0 0 10px 0; }
 
-    /* ===== Risk Badges ===== */
+    /* ===== Lencana Risiko ===== */
     .risk-badge {
         display: inline-block;
         padding: 0.25rem 0.75rem;
         border-radius: 50px;
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         font-weight: 700;
         letter-spacing: 0.3px;
     }
@@ -340,7 +344,7 @@ st.markdown("""
         border: 1px solid rgba(0, 206, 201, 0.25);
     }
 
-    /* ===== Score Bar ===== */
+    /* ===== Bilah Skor ===== */
     .score-bar-container {
         display: flex;
         align-items: center;
@@ -353,7 +357,7 @@ st.markdown("""
         background: var(--surface-lighter);
         border-radius: 4px;
         overflow: hidden;
-        min-width: 60px;
+        min-width: 50px;
     }
 
     .score-bar-fill {
@@ -369,12 +373,12 @@ st.markdown("""
 
     .score-text {
         font-weight: 700;
-        font-size: 0.85rem;
-        min-width: 35px;
+        font-size: 0.82rem;
+        min-width: 32px;
         text-align: right;
     }
 
-    /* ===== Feature Cards ===== */
+    /* ===== Kartu Fitur ===== */
     .feature-card {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -409,7 +413,7 @@ st.markdown("""
         margin-top: 0.3rem;
     }
 
-    /* ===== Info Box ===== */
+    /* ===== Kotak Informasi ===== */
     .info-box {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -488,88 +492,7 @@ st.markdown("""
         line-height: 1.6;
     }
 
-    /* ===== Coming Soon Section ===== */
-    .coming-soon-container {
-        background: var(--surface);
-        border: 1px dashed rgba(108, 92, 231, 0.3);
-        border-radius: 16px;
-        padding: 2.5rem 2rem;
-        text-align: center;
-        position: relative;
-        overflow: hidden;
-        opacity: 0.7;
-    }
-
-    .coming-soon-container::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: repeating-linear-gradient(
-            -45deg,
-            transparent,
-            transparent 10px,
-            rgba(108, 92, 231, 0.03) 10px,
-            rgba(108, 92, 231, 0.03) 20px
-        );
-    }
-
-    .coming-soon-badge {
-        display: inline-block;
-        background: rgba(108, 92, 231, 0.2);
-        color: var(--primary-light);
-        padding: 0.3rem 1.2rem;
-        border-radius: 50px;
-        font-size: 0.7rem;
-        font-weight: 700;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        margin-bottom: 1rem;
-        position: relative;
-    }
-
-    .coming-soon-title {
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        margin-bottom: 0.5rem;
-        position: relative;
-    }
-
-    .coming-soon-desc {
-        font-size: 0.85rem;
-        color: var(--text-secondary);
-        max-width: 500px;
-        margin: 0 auto;
-        position: relative;
-    }
-
-    .coming-soon-metrics {
-        display: flex;
-        justify-content: center;
-        gap: 2rem;
-        margin-top: 1.5rem;
-        position: relative;
-    }
-
-    .coming-soon-metric {
-        text-align: center;
-    }
-
-    .coming-soon-metric-value {
-        font-size: 1.2rem;
-        font-weight: 700;
-        color: var(--text-secondary);
-    }
-
-    .coming-soon-metric-label {
-        font-size: 0.7rem;
-        color: var(--text-secondary);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        opacity: 0.7;
-    }
-
-    /* ===== Stock Header ===== */
+    /* ===== Header Saham ===== */
     .stock-header {
         background: var(--gradient-hero);
         border-radius: 16px;
@@ -640,7 +563,7 @@ st.markdown("""
         text-decoration: none;
     }
 
-    /* ===== Sidebar Styling ===== */
+    /* ===== Bilah Samping ===== */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1A1A2E 0%, #16213E 100%);
     }
@@ -673,35 +596,32 @@ st.markdown("""
         margin-top: 0.2rem;
     }
 
-    /* ===== Timestamp Badge ===== */
-    .timestamp-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        background: rgba(0, 206, 201, 0.1);
-        border: 1px solid rgba(0, 206, 201, 0.25);
-        color: var(--accent);
-        padding: 0.3rem 0.8rem;
-        border-radius: 8px;
-        font-size: 0.75rem;
+    /* ===== Daftar Ticker ===== */
+    .ticker-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin: 0.5rem 0;
+    }
+
+    .ticker-tag {
+        display: inline-block;
+        background: rgba(108, 92, 231, 0.15);
+        color: var(--primary-light);
+        padding: 0.2rem 0.55rem;
+        border-radius: 6px;
+        font-size: 0.72rem;
         font-weight: 600;
+        border: 1px solid rgba(108, 92, 231, 0.25);
     }
 
-    /* ===== Animations ===== */
-    @keyframes fadeInUp {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
+    .ticker-tag.custom {
+        background: rgba(0, 206, 201, 0.15);
+        color: var(--accent);
+        border-color: rgba(0, 206, 201, 0.25);
     }
 
-    .hero-container, .kpi-card, .info-box, .disclaimer-box, .stock-header {
-        animation: fadeInUp 0.6s ease-out forwards;
-    }
-
-    .kpi-card:nth-child(2) { animation-delay: 0.1s; }
-    .kpi-card:nth-child(3) { animation-delay: 0.2s; }
-    .kpi-card:nth-child(4) { animation-delay: 0.3s; }
-
-    /* ===== Status Pill ===== */
+    /* ===== Status ===== */
     .status-pill {
         display: inline-flex;
         align-items: center;
@@ -724,15 +644,14 @@ st.markdown("""
         border: 1px solid rgba(255, 107, 107, 0.3);
     }
 
-    /* ===== Reason Text ===== */
     .reason-text {
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         color: var(--text-secondary);
         line-height: 1.5;
-        max-width: 350px;
+        max-width: 300px;
     }
 
-    /* ===== Live Pulse ===== */
+    /* ===== Titik Langsung ===== */
     .live-dot {
         display: inline-block;
         width: 8px;
@@ -748,12 +667,117 @@ st.markdown("""
         70% { box-shadow: 0 0 0 8px rgba(0, 206, 201, 0); }
         100% { box-shadow: 0 0 0 0 rgba(0, 206, 201, 0); }
     }
+
+    /* ===== Keadaan Kosong ===== */
+    .empty-state {
+        text-align: center;
+        padding: 2.5rem 2rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+    }
+
+    .empty-state-icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .empty-state-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 0.5rem;
+    }
+
+    .empty-state-desc {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        max-width: 520px;
+        margin: 0 auto;
+        line-height: 1.6;
+    }
+
+    /* ===== Sparkline ===== */
+    .sparkline-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* ===== Animasi ===== */
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero-container, .kpi-card, .info-box, .stock-header {
+        animation: fadeInUp 0.6s ease-out forwards;
+    }
+
+    .kpi-card:nth-child(2) { animation-delay: 0.1s; }
+    .kpi-card:nth-child(3) { animation-delay: 0.2s; }
+    .kpi-card:nth-child(4) { animation-delay: 0.3s; }
+
+    /* ===== DataFrame Styling ===== */
+    [data-testid="stDataFrame"] {
+        border: 1px solid var(--border) !important;
+        border-radius: 12px !important;
+        overflow: hidden;
+    }
+
+    /* ===== Responsif Seluler ===== */
+    @media (max-width: 768px) {
+        .hero-container {
+            padding: 1.5rem 1.2rem;
+        }
+        .hero-title {
+            font-size: 1.4rem;
+        }
+        .hero-subtitle {
+            font-size: 0.85rem;
+        }
+        .hero-description {
+            font-size: 0.8rem;
+        }
+        .kpi-card {
+            margin-bottom: 0.8rem;
+            padding: 1rem;
+        }
+        .kpi-value {
+            font-size: 1.2rem;
+        }
+        .suspicious-table {
+            font-size: 0.72rem;
+        }
+        .suspicious-table th,
+        .suspicious-table td {
+            padding: 0.4rem 0.5rem;
+        }
+        .stock-header {
+            flex-direction: column;
+            text-align: center;
+            padding: 1.5rem;
+            gap: 1rem;
+        }
+        .stock-ticker-big {
+            font-size: 1.6rem;
+        }
+        .feature-grid {
+            grid-template-columns: 1fr;
+        }
+        .section-header {
+            flex-wrap: wrap;
+        }
+        .section-header-badge {
+            margin-left: 0;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
 
 # =========================
-# Plotly dark theme template
+# Tata letak Plotly gelap
 # =========================
 PLOTLY_LAYOUT = dict(
     template="plotly_dark",
@@ -785,31 +809,15 @@ PLOTLY_LAYOUT = dict(
 
 
 # =========================
-# Helper functions
+# Fungsi pembantu
 # =========================
 def get_risk_badge_html(risk_level: str) -> str:
-    """Menghasilkan HTML badge untuk risk level."""
-    css_class = risk_level.lower().replace(" ", "").replace("risk", "")
-    if risk_level == "High Risk":
-        css_class = "high"
-    elif risk_level == "Medium Risk":
-        css_class = "medium"
-    elif risk_level == "Low Risk":
-        css_class = "low"
-    else:
-        css_class = "normal"
+    css_class = RISK_CSS_CLASS.get(risk_level, "normal")
     return f'<span class="risk-badge {css_class}">{risk_level}</span>'
 
 
 def get_score_bar_html(score: float, risk_level: str) -> str:
-    """Menghasilkan HTML score bar visual."""
-    css_class = "normal"
-    if risk_level == "High Risk":
-        css_class = "high"
-    elif risk_level == "Medium Risk":
-        css_class = "medium"
-    elif risk_level == "Low Risk":
-        css_class = "low"
+    css_class = RISK_CSS_CLASS.get(risk_level, "normal")
     pct = min(score * 100, 100)
     return f"""
     <div class="score-bar-container">
@@ -821,15 +829,55 @@ def get_score_bar_html(score: float, risk_level: str) -> str:
     """
 
 
+def generate_sparkline_svg(values, width=70, height=22):
+    if not values or len(values) < 2:
+        return f'<svg width="{width}" height="{height}"></svg>'
+    min_val = min(values)
+    max_val = max(values)
+    val_range = max_val - min_val if max_val != min_val else 1
+    points = []
+    for i, v in enumerate(values):
+        x = (i / (len(values) - 1)) * width
+        y = height - ((v - min_val) / val_range) * (height - 4) - 2
+        points.append(f"{x:.1f},{y:.1f}")
+    polyline = " ".join(points)
+    color = "#55EFC4" if values[-1] >= values[0] else "#FF8A8A"
+    return (
+        f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">'
+        f'<polyline points="{polyline}" fill="none" stroke="{color}" '
+        f'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+        f'</svg>'
+    )
+
+
+def get_trend_html(delta, label=""):
+    if delta > 0:
+        return f'<div class="kpi-trend positive">▲ +{delta} {label}</div>'
+    elif delta < 0:
+        return f'<div class="kpi-trend negative">▼ {delta} {label}</div>'
+    else:
+        return f'<div class="kpi-trend neutral">— tidak berubah</div>'
+
+
+def filter_chart_data(stock_df, period_key):
+    days = PERIOD_OPTIONS.get(period_key)
+    if days is not None:
+        cutoff = stock_df["date"].max() - timedelta(days=days)
+        return stock_df[stock_df["date"] >= cutoff]
+    else:
+        year_start = stock_df["date"].max().replace(month=1, day=1)
+        return stock_df[stock_df["date"] >= year_start]
+
+
 # =========================
-# Sidebar
+# Bilah Samping
 # =========================
 with st.sidebar:
     st.markdown("""
 <div class="sidebar-brand">
     <div class="sidebar-brand-icon">🛡️</div>
     <div class="sidebar-brand-name">IDX AI Surveillance</div>
-    <div class="sidebar-brand-version">Market Surveillance Dashboard 1.0</div>
+    <div class="sidebar-brand-version">Dasbor Pemantauan Pasar v1.0</div>
 </div>
     """, unsafe_allow_html=True)
 
@@ -837,24 +885,21 @@ with st.sidebar:
 
     page = st.radio(
         "Pilih halaman",
-        ["🛡️ Market Surveillance", "🔍 Analisis Saham"],
+        ["🛡️ Pemantauan Pasar", "🔍 Analisis Saham"],
         label_visibility="collapsed",
     )
 
     st.markdown("---")
     st.markdown("## ⚙️ Pengaturan")
 
-    # Ticker management
     st.markdown("**Saham yang Dipantau**")
 
-    # Custom ticker input
     custom_ticker_input = st.text_input(
-        "Tambah ticker (misal: BBNI.JK)",
-        placeholder="Ketik kode saham, lalu Enter",
+        "Tambah kode saham (contoh: BBNI.JK)",
+        placeholder="Ketik kode saham, lalu tekan Enter",
         help="Masukkan kode saham Yahoo Finance. Contoh: BBNI.JK, ASII.JK",
     )
 
-    # Session state untuk custom tickers
     if "custom_tickers" not in st.session_state:
         st.session_state.custom_tickers = []
 
@@ -866,95 +911,94 @@ with st.sidebar:
             st.session_state.custom_tickers.append(ticker_upper)
             st.rerun()
 
-    # Gabungkan tickers
     all_tickers = DEFAULT_TICKERS + st.session_state.custom_tickers
 
-    # Tampilkan ticker list
-    ticker_display = ", ".join([t.replace(".JK", "") for t in all_tickers])
+    pills_html = " ".join([
+        f'<span class="ticker-tag{" custom" if t in st.session_state.custom_tickers else ""}">'
+        f'{t.replace(".JK", "")}</span>'
+        for t in all_tickers
+    ])
     st.markdown(
-        f"<div style='font-size:0.8rem; color:#A0A0B8; line-height:1.6;'>"
-        f"📈 <b>{len(all_tickers)}</b> saham: {ticker_display}"
-        f"</div>",
+        f"<div style='font-size:0.8rem; color:#A0A0B8; margin-bottom:0.3rem;'>"
+        f"📈 <b>{len(all_tickers)}</b> saham dipantau</div>"
+        f"<div class='ticker-list'>{pills_html}</div>",
         unsafe_allow_html=True,
     )
 
-    # Remove custom tickers
     if st.session_state.custom_tickers:
-        remove_ticker = st.selectbox(
-            "Hapus ticker tambahan",
-            ["—"] + st.session_state.custom_tickers,
+        st.markdown(
+            "<div style='font-size:0.75rem; color:#A0A0B8; margin-top:0.8rem; margin-bottom:0.3rem;'>"
+            "Hapus saham tambahan:</div>",
+            unsafe_allow_html=True,
         )
-        if remove_ticker != "—":
-            st.session_state.custom_tickers.remove(remove_ticker)
-            st.rerun()
+        for i, t in enumerate(st.session_state.custom_tickers):
+            if st.button(
+                f"✕ {t.replace('.JK', '')}",
+                key=f"rm_{i}",
+                use_container_width=True,
+            ):
+                st.session_state.custom_tickers.remove(t)
+                st.rerun()
 
     st.markdown("---")
 
-    # Refresh button
-    if st.button("🔄 Refresh Data Sekarang", use_container_width=True):
+    if st.button("🔄 Segarkan Data Sekarang", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
 
 # =========================
-# Load Data (cached pipeline)
+# Pemuatan Data
 # =========================
-@st.cache_data(ttl=CACHE_TTL, show_spinner="📡 Mengambil data market terbaru...")
+@st.cache_data(ttl=CACHE_TTL, show_spinner="📡 Mengambil data pasar terbaru...")
 def load_surveillance_data(tickers_tuple):
-    """Wrapper dengan tuple agar bisa di-cache oleh Streamlit."""
     return get_surveillance_data(list(tickers_tuple))
 
 
-# Convert list ke tuple agar bisa di-hash oleh st.cache_data
 tickers_tuple = tuple(all_tickers)
 
-with st.spinner("📡 Memuat data surveillance..."):
+with st.spinner("📡 Memuat data pemantauan pasar..."):
     df = load_surveillance_data(tickers_tuple)
 
 if df.empty:
-    st.error("❌ Gagal mengambil data. Periksa koneksi internet atau coba refresh.")
+    st.error("❌ Gagal mengambil data. Periksa koneksi internet Anda atau coba segarkan halaman.")
     st.stop()
 
-# Timestamp update terakhir
 last_update = datetime.now().strftime("%d %b %Y, %H:%M WIB")
 
 
 # ==========================================================
-# PAGE 1: MARKET SURVEILLANCE OVERVIEW
+# HALAMAN 1: PEMANTAUAN PASAR
 # ==========================================================
-if page == "🛡️ Market Surveillance":
+if page == "🛡️ Pemantauan Pasar":
 
     # --- Hero Header ---
     st.markdown(f"""
 <div class="hero-container">
-    <div class="hero-badge">🛡️ AI Market Surveillance System</div>
+    <div class="hero-badge">🛡️ Sistem Pemantauan Pasar Berbasis AI</div>
     <h1 class="hero-title">IDX AI Market Surveillance</h1>
     <p class="hero-subtitle">Pemantauan Aktivitas Pasar Tidak Biasa — Bursa Efek Indonesia</p>
     <p class="hero-description">
-        Sistem pemantauan pasar berbasis AI untuk mendeteksi pergerakan harga dan volume saham
-        yang tidak biasa secara real-time. Menggunakan algoritma <strong style="color:#A29BFE;">Isolation Forest</strong>
+        Sistem pemantauan pasar berbasis kecerdasan buatan untuk mendeteksi pergerakan harga dan volume saham
+        yang tidak biasa secara <em>real-time</em>. Menggunakan algoritma <strong style="color:#A29BFE;"><em>Isolation Forest</em></strong>
         untuk menganalisis pola perdagangan dan mengidentifikasi aktivitas yang menyimpang dari kondisi normal,
-        terinspirasi dari konsep <strong style="color:#00CEC9;">Unusual Market Activity (UMA)</strong>
+        terinspirasi dari konsep <strong style="color:#00CEC9;"><em>Unusual Market Activity</em> (UMA)</strong>
         yang diterapkan oleh Bursa Efek Indonesia.
     </p>
 </div>
     """, unsafe_allow_html=True)
 
-    # --- Disclaimer ---
-    st.markdown("""
-<div class="disclaimer-box">
-    <div class="disclaimer-title">⚠️ Disclaimer — Bukan Rekomendasi Investasi</div>
-    <p class="disclaimer-text">
-        Dashboard ini dibuat untuk <strong>tujuan edukasi dan riset</strong>.
-        Hasil deteksi anomali bukan merupakan rekomendasi untuk membeli, menjual, atau menahan saham tertentu.
-        Sistem ini <strong>tidak menyatakan adanya manipulasi pasar</strong> dan hanya mendeteksi pola harga serta volume
-        yang terlihat tidak biasa berdasarkan data historis. Segala keputusan investasi sepenuhnya menjadi tanggung jawab
-        masing-masing individu.
-    </p>
-</div>
-    """, unsafe_allow_html=True)
+    # --- Sanggahan (dapat diciutkan) ---
+    with st.expander("⚠️ Sanggahan — Bukan Rekomendasi Investasi", expanded=False):
+        st.markdown("""
+Dasbor ini dibuat untuk **tujuan edukasi dan riset**.
+Hasil deteksi anomali bukan merupakan rekomendasi untuk membeli, menjual, atau menahan saham tertentu.
+Sistem ini **tidak menyatakan adanya manipulasi pasar** dan hanya mendeteksi pola harga serta volume
+yang terlihat tidak biasa berdasarkan data historis. Segala keputusan investasi sepenuhnya menjadi
+tanggung jawab masing-masing individu.
+        """)
 
-    # --- KPI Cards ---
+    # --- Kartu KPI dengan Indikator Tren ---
     latest_date = df["date"].max()
     latest_df = df[df["date"] == latest_date]
     anomalies_today = latest_df[latest_df["is_anomaly"] == True]
@@ -970,32 +1014,63 @@ if page == "🛡️ Market Surveillance":
         highest_score = 0.0
         highest_ticker = "—"
 
+    # Hitung delta dibandingkan hari sebelumnya
+    all_dates = sorted(df["date"].unique())
+    if len(all_dates) >= 2:
+        prev_date = all_dates[-2]
+        prev_df = df[df["date"] == prev_date]
+        prev_anomalies = prev_df[prev_df["is_anomaly"] == True]
+        prev_total_anomalies = prev_anomalies["ticker"].nunique()
+        prev_monitored = prev_df["ticker"].nunique()
+
+        if not prev_anomalies.empty:
+            prev_highest = prev_anomalies["anomaly_score_normalized"].max()
+        else:
+            prev_highest = 0.0
+
+        delta_monitored = total_monitored - prev_monitored
+        delta_anomalies = total_anomalies_today - prev_total_anomalies
+        delta_score = highest_score - prev_highest
+    else:
+        delta_monitored = 0
+        delta_anomalies = 0
+        delta_score = 0.0
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
+        trend_html = get_trend_html(delta_monitored, "saham") if delta_monitored != 0 else '<div class="kpi-trend neutral">— tidak berubah</div>'
         st.markdown(f"""
 <div class="kpi-card purple">
     <div class="kpi-icon">📡</div>
     <div class="kpi-label">Saham Dipantau</div>
     <div class="kpi-value purple">{total_monitored}</div>
+    {trend_html}
 </div>
         """, unsafe_allow_html=True)
 
     with col2:
+        trend_html = get_trend_html(delta_anomalies, "anomali") if delta_anomalies != 0 else '<div class="kpi-trend neutral">— tidak berubah</div>'
         st.markdown(f"""
 <div class="kpi-card red">
     <div class="kpi-icon">🚨</div>
     <div class="kpi-label">Anomali Hari Ini</div>
     <div class="kpi-value red">{total_anomalies_today}</div>
+    {trend_html}
 </div>
         """, unsafe_allow_html=True)
 
     with col3:
+        if abs(delta_score) > 0.001:
+            trend_html = get_trend_html(round(delta_score, 2), "skor")
+        else:
+            trend_html = '<div class="kpi-trend neutral">— tidak berubah</div>'
         st.markdown(f"""
 <div class="kpi-card gold">
     <div class="kpi-icon">🔥</div>
     <div class="kpi-label">Skor Risiko Tertinggi</div>
     <div class="kpi-value gold">{highest_score:.2f}</div>
+    {trend_html}
 </div>
         """, unsafe_allow_html=True)
 
@@ -1005,20 +1080,20 @@ if page == "🛡️ Market Surveillance":
     <div class="kpi-icon">🕐</div>
     <div class="kpi-label">Terakhir Diperbarui</div>
     <div class="kpi-value teal" style="font-size:1rem;">{last_update}</div>
+    <div class="kpi-trend neutral"><span class="live-dot"></span> langsung</div>
 </div>
         """, unsafe_allow_html=True)
 
 
-    # --- Top Suspicious Stocks Today ---
+    # --- Saham Terindikasi Anomali Hari Ini ---
     st.markdown("""
 <div class="section-header">
     <span class="section-header-icon">🔍</span>
-    <span class="section-header-text">Saham Mencurigakan Hari Ini</span>
-    <span class="section-header-badge">LIVE RANKING</span>
+    <span class="section-header-text">Saham Terindikasi Anomali Hari Ini</span>
+    <span class="section-header-badge">PERINGKAT LANGSUNG</span>
 </div>
     """, unsafe_allow_html=True)
 
-    # Ambil data terbaru per ticker: skor tertinggi
     latest_scores = latest_df.groupby("ticker").agg(
         anomaly_score_normalized=("anomaly_score_normalized", "max"),
         risk_level=("risk_level", "first"),
@@ -1027,68 +1102,124 @@ if page == "🛡️ Market Surveillance":
         close=("close", "last"),
         daily_return=("daily_return", "last"),
         volume_spike_ratio=("volume_spike_ratio", "last"),
+        volume=("volume", "last"),
     ).reset_index()
 
     latest_scores = latest_scores.sort_values("anomaly_score_normalized", ascending=False)
 
-    # Reassign risk level berdasarkan score terbaru
     from src.data_pipeline import _classify_risk
     latest_scores["risk_level"] = latest_scores["anomaly_score_normalized"].apply(_classify_risk)
 
-    # Build HTML table
-    table_rows = ""
-    for rank, (_, row) in enumerate(latest_scores.iterrows(), 1):
-        badge_html = get_risk_badge_html(row["risk_level"])
-        score_html = get_score_bar_html(row["anomaly_score_normalized"], row["risk_level"])
+    # Pencarian
+    search_query = st.text_input(
+        "Cari kode saham",
+        placeholder="Ketik kode saham untuk memfilter tabel...",
+        label_visibility="collapsed",
+    )
 
-        # Ambil anomaly reason jika memang anomali
-        if row["is_anomaly"] and row["anomaly_reason"] != "Normal":
-            reason_text = row["anomaly_reason"]
-        else:
-            reason_text = "Tidak ada aktivitas mencurigakan"
+    if search_query:
+        filtered_scores = latest_scores[
+            latest_scores["ticker"].str.contains(search_query.upper(), na=False)
+        ]
+    else:
+        filtered_scores = latest_scores
 
-        # Format return
-        ret_val = row["daily_return"] * 100 if pd.notna(row["daily_return"]) else 0
-        ret_color = "#55EFC4" if ret_val >= 0 else "#FF8A8A"
-        ret_sign = "+" if ret_val >= 0 else ""
+    if filtered_scores.empty:
+        st.markdown("""
+<div class="empty-state">
+    <div class="empty-state-icon">🔎</div>
+    <div class="empty-state-title">Tidak Ditemukan</div>
+    <div class="empty-state-desc">Tidak ada saham yang sesuai dengan kata kunci pencarian Anda. Silakan coba kata kunci lain.</div>
+</div>
+        """, unsafe_allow_html=True)
+    else:
+        # Data sparkline 7 hari terakhir
+        sparkline_data_map = {}
+        for ticker in filtered_scores["ticker"].unique():
+            ticker_hist = df[df["ticker"] == ticker].sort_values("date").tail(7)
+            sparkline_data_map[ticker] = ticker_hist["close"].tolist()
 
-        table_rows += f"""<tr><td style="font-weight:700; color:var(--primary-light);">{rank}</td><td style="font-weight:700;">{row['ticker']}</td><td>{score_html}</td><td>{badge_html}</td><td><span style="color:{ret_color}; font-weight:600;">{ret_sign}{ret_val:.2f}%</span></td><td><div class="reason-text">{reason_text}</div></td></tr>"""
+        table_rows = ""
+        for rank, (_, row) in enumerate(filtered_scores.iterrows(), 1):
+            badge_html = get_risk_badge_html(row["risk_level"])
+            score_html = get_score_bar_html(row["anomaly_score_normalized"], row["risk_level"])
 
-    st.markdown(f"""
+            if row["is_anomaly"] and row["anomaly_reason"] != "Normal":
+                reason_text = row["anomaly_reason"]
+            else:
+                reason_text = "Tidak ada aktivitas mencurigakan"
+
+            ret_val = row["daily_return"] * 100 if pd.notna(row["daily_return"]) else 0
+            ret_color = "#55EFC4" if ret_val >= 0 else "#FF8A8A"
+            ret_sign = "+" if ret_val >= 0 else ""
+            ret_icon = "▲" if ret_val >= 0 else "▼"
+
+            spark_svg = generate_sparkline_svg(sparkline_data_map.get(row["ticker"], []))
+
+            table_rows += f"""<tr>
+<td style="font-weight:700; color:var(--primary-light);">{rank}</td>
+<td style="font-weight:700;">{row['ticker']}</td>
+<td><div class="sparkline-cell">{spark_svg}</div></td>
+<td>{score_html}</td>
+<td>{badge_html}</td>
+<td><span style="color:{ret_color}; font-weight:600;">{ret_icon} {ret_sign}{ret_val:.2f}%</span></td>
+<td><div class="reason-text">{reason_text}</div></td>
+</tr>"""
+
+        st.markdown(f"""
 <table class="suspicious-table">
     <thead>
         <tr>
-            <th>Rank</th>
-            <th>Ticker</th>
+            <th>#</th>
+            <th>Kode Saham</th>
+            <th>7 Hari</th>
             <th>Skor Anomali</th>
             <th>Status</th>
-            <th>Return</th>
-            <th>Potensi Alasan</th>
+            <th>Imbal Hasil</th>
+            <th>Indikasi Penyebab</th>
         </tr>
     </thead>
     <tbody>
         {table_rows}
     </tbody>
 </table>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+
+    # Unduh CSV
+    download_cols = latest_scores[["ticker", "anomaly_score_normalized", "risk_level",
+                                    "daily_return", "volume_spike_ratio", "anomaly_reason"]].copy()
+    download_cols.columns = ["Kode Saham", "Skor Anomali", "Tingkat Risiko",
+                              "Imbal Hasil Harian", "Rasio Lonjakan Volume", "Indikasi Penyebab"]
+    csv_suspicious = download_cols.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📥 Unduh Data CSV",
+        data=csv_suspicious,
+        file_name=f"saham_terindikasi_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime="text/csv",
+    )
 
 
-    # --- Market Risk Heatmap ---
+    # --- Peta Risiko Pasar ---
     st.markdown("""
 <div class="section-header">
     <span class="section-header-icon">🗺️</span>
     <span class="section-header-text">Peta Risiko Pasar</span>
-    <span class="section-header-badge">HEATMAP</span>
+    <span class="section-header-badge">PETA PANAS</span>
 </div>
     """, unsafe_allow_html=True)
 
-    heatmap_data = latest_scores[["ticker", "anomaly_score_normalized", "risk_level"]].copy()
+    heatmap_data = latest_scores[["ticker", "anomaly_score_normalized", "risk_level", "volume"]].copy()
     heatmap_data["score_display"] = heatmap_data["anomaly_score_normalized"].apply(lambda x: f"{x:.2f}")
+    heatmap_data["volume"] = heatmap_data["volume"].fillna(0).astype(int)
+    heatmap_data["volume"] = heatmap_data["volume"].apply(lambda x: max(x, 1))
+
+    # Skala logaritma agar kotak saham berukuran kecil tidak terlalu menyusut/penyok
+    heatmap_data["size"] = np.log1p(heatmap_data["volume"])
 
     fig_heatmap = px.treemap(
         heatmap_data,
         path=["ticker"],
-        values=[1] * len(heatmap_data),  # Equal size
+        values="size",
         color="anomaly_score_normalized",
         color_continuous_scale=[
             [0, "#1E1E2E"],
@@ -1123,12 +1254,12 @@ if page == "🛡️ Market Surveillance":
     st.plotly_chart(fig_heatmap, use_container_width=True)
 
 
-    # --- Historical Anomaly Events ---
+    # --- Riwayat Anomali Terdeteksi ---
     st.markdown("""
 <div class="section-header">
     <span class="section-header-icon">📋</span>
     <span class="section-header-text">Riwayat Anomali Terdeteksi</span>
-    <span class="section-header-badge">ALL TICKERS</span>
+    <span class="section-header-badge">SELURUH SAHAM</span>
 </div>
     """, unsafe_allow_html=True)
 
@@ -1136,7 +1267,15 @@ if page == "🛡️ Market Surveillance":
 
     if all_anomalies.empty:
         st.markdown("""
-<div class="status-pill success">✅ Tidak ada anomali terdeteksi pada periode ini</div>
+<div class="empty-state">
+    <div class="empty-state-icon">✅</div>
+    <div class="empty-state-title">Tidak Ada Anomali Terdeteksi</div>
+    <div class="empty-state-desc">
+        Seluruh saham yang dipantau menunjukkan pola perdagangan yang normal pada periode ini.
+        Hal ini mengindikasikan kondisi pasar yang relatif stabil tanpa adanya pergerakan harga
+        atau volume yang signifikan menyimpang dari pola historisnya.
+    </div>
+</div>
         """, unsafe_allow_html=True)
     else:
         all_anomalies_table = all_anomalies[
@@ -1152,20 +1291,35 @@ if page == "🛡️ Market Surveillance":
 
         all_anomalies_table = all_anomalies_table.rename(columns={
             "date": "📅 Tanggal",
-            "ticker": "🏷️ Ticker",
-            "close": "💰 Harga Close",
+            "ticker": "🏷️ Kode Saham",
+            "close": "💰 Harga Penutupan",
             "volume": "📊 Volume",
-            "daily_return": "📈 Return (%)",
-            "volume_spike_ratio": "⚡ Vol. Spike",
+            "daily_return": "📈 Imbal Hasil (%)",
+            "volume_spike_ratio": "⚡ Lonjakan Vol.",
             "anomaly_score_normalized": "🎯 Skor",
-            "risk_level": "🔰 Risk Level",
-            "anomaly_reason": "📝 Alasan",
+            "risk_level": "🔰 Tingkat Risiko",
+            "anomaly_reason": "📝 Indikasi Penyebab",
         })
 
         st.dataframe(
             all_anomalies_table,
             use_container_width=True,
             hide_index=True,
+            column_config={
+                "💰 Harga Penutupan": st.column_config.NumberColumn(format="Rp %.0f"),
+                "📊 Volume": st.column_config.NumberColumn(format="%.0f"),
+                "📈 Imbal Hasil (%)": st.column_config.NumberColumn(format="%.2f"),
+                "⚡ Lonjakan Vol.": st.column_config.NumberColumn(format="%.2f"),
+                "🎯 Skor": st.column_config.NumberColumn(format="%.3f"),
+            },
+        )
+
+        csv_anomaly = all_anomalies_table.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Unduh Riwayat CSV",
+            data=csv_anomaly,
+            file_name=f"riwayat_anomali_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
         )
 
 
@@ -1173,7 +1327,7 @@ if page == "🛡️ Market Surveillance":
     st.markdown("""
 <div class="section-header">
     <span class="section-header-icon">⚙️</span>
-    <span class="section-header-text">Bagaimana Sistem Ini Bekerja</span>
+    <span class="section-header-text">Cara Kerja Sistem</span>
 </div>
     """, unsafe_allow_html=True)
 
@@ -1184,126 +1338,89 @@ if page == "🛡️ Market Surveillance":
         <div class="feature-item">
             <div class="feature-dot"></div>
             <div>
-                <span class="feature-name">Daily Return</span><br>
-                <span class="feature-desc">Perubahan harga close dari hari sebelumnya</span>
+                <span class="feature-name">Imbal Hasil Harian</span><br>
+                <span class="feature-desc">Perubahan harga penutupan dari hari sebelumnya</span>
             </div>
         </div>
         <div class="feature-item">
             <div class="feature-dot"></div>
             <div>
-                <span class="feature-name">Volume Change</span><br>
-                <span class="feature-desc">Perubahan volume dari hari sebelumnya</span>
+                <span class="feature-name">Perubahan Volume</span><br>
+                <span class="feature-desc">Perubahan volume perdagangan dari hari sebelumnya</span>
             </div>
         </div>
         <div class="feature-item">
             <div class="feature-dot"></div>
             <div>
-                <span class="feature-name">Volume Spike Ratio</span><br>
-                <span class="feature-desc">Perbandingan volume hari ini dengan rata-rata 20 hari</span>
+                <span class="feature-name">Rasio Lonjakan Volume</span><br>
+                <span class="feature-desc">Perbandingan volume hari ini terhadap rata-rata 20 hari</span>
             </div>
         </div>
         <div class="feature-item">
             <div class="feature-dot"></div>
             <div>
-                <span class="feature-name">Price Range Percentage</span><br>
-                <span class="feature-desc">Selisih high dan low dibanding harga close</span>
+                <span class="feature-name">Persentase Rentang Harga</span><br>
+                <span class="feature-desc">Selisih harga tertinggi dan terendah terhadap harga penutupan</span>
             </div>
         </div>
         <div class="feature-item">
             <div class="feature-dot"></div>
             <div>
-                <span class="feature-name">Price Gap MA 20</span><br>
-                <span class="feature-desc">Jarak harga close terhadap moving average 20 hari</span>
+                <span class="feature-name">Simpangan Harga MA 20</span><br>
+                <span class="feature-desc">Jarak harga penutupan terhadap rata-rata bergerak 20 hari</span>
             </div>
         </div>
         <div class="feature-item">
             <div class="feature-dot"></div>
             <div>
-                <span class="feature-name">Rolling Volatility 20</span><br>
-                <span class="feature-desc">Volatilitas return selama 20 hari terakhir</span>
+                <span class="feature-name">Volatilitas 20 Hari</span><br>
+                <span class="feature-desc">Volatilitas imbal hasil selama 20 hari terakhir</span>
             </div>
         </div>
         <div class="feature-item">
             <div class="feature-dot"></div>
             <div>
-                <span class="feature-name">Return Z-score</span><br>
-                <span class="feature-desc">Seberapa ekstrem return dibanding pola 20 hari terakhir</span>
+                <span class="feature-name"><em>Z-Score</em> Imbal Hasil</span><br>
+                <span class="feature-desc">Tingkat ekstrem imbal hasil dibandingkan pola 20 hari terakhir</span>
             </div>
         </div>
         <div class="feature-item">
             <div class="feature-dot"></div>
             <div>
-                <span class="feature-name">Volume Z-score</span><br>
-                <span class="feature-desc">Seberapa ekstrem volume dibanding pola 20 hari terakhir</span>
+                <span class="feature-name"><em>Z-Score</em> Volume</span><br>
+                <span class="feature-desc">Tingkat ekstrem volume dibandingkan pola 20 hari terakhir</span>
             </div>
         </div>
     </div>
 <div class="model-box">
-    <div class="model-box-title">🤖 Model: Isolation Forest</div>
+    <div class="model-box-title">🤖 Model: <em>Isolation Forest</em></div>
     <div class="model-box-text">
-        Model yang digunakan adalah <strong>Isolation Forest</strong>, yaitu algoritma unsupervised learning
+        Model yang digunakan adalah <strong><em>Isolation Forest</em></strong>, yaitu algoritma <em>unsupervised learning</em>
         yang mendeteksi data yang berbeda dari pola normal. Algoritma ini bekerja dengan cara mengisolasi
         observasi — data yang lebih mudah diisolasi dianggap sebagai anomali. Skor anomali dinormalisasi
-        ke skala <strong>0.00</strong> (normal) hingga <strong>1.00</strong> (sangat tidak biasa).
+        ke skala <strong>0,00</strong> (normal) hingga <strong>1,00</strong> (sangat tidak biasa).
     </div>
 </div>
-</div>
-    """, unsafe_allow_html=True)
-
-
-    # --- Official UMA Comparison (Coming Soon) ---
-    st.markdown("""
-<div class="section-header">
-    <span class="section-header-icon">🏛️</span>
-    <span class="section-header-text">Perbandingan dengan UMA Resmi BEI</span>
-    <span class="section-header-badge">COMING SOON</span>
-</div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-<div class="coming-soon-container">
-    <div class="coming-soon-badge">🔒 Coming Soon</div>
-    <div class="coming-soon-title">Integrasi dengan Pengumuman UMA Resmi</div>
-    <div class="coming-soon-desc">
-        Fitur ini akan membandingkan hasil deteksi anomali sistem dengan pengumuman UMA resmi
-        dari Bursa Efek Indonesia untuk mengukur akurasi prediksi.
-    </div>
-    <div class="coming-soon-metrics">
-        <div class="coming-soon-metric">
-            <div class="coming-soon-metric-value">—</div>
-            <div class="coming-soon-metric-label">Status UMA Resmi</div>
-        </div>
-        <div class="coming-soon-metric">
-            <div class="coming-soon-metric-value">—</div>
-            <div class="coming-soon-metric-label">Risk Level Sistem</div>
-        </div>
-        <div class="coming-soon-metric">
-            <div class="coming-soon-metric-value">—</div>
-            <div class="coming-soon-metric-label">Hari Sebelum Pengumuman</div>
-        </div>
-    </div>
 </div>
     """, unsafe_allow_html=True)
 
 
 # ==========================================================
-# PAGE 2: DETAILED STOCK ANALYSIS
+# HALAMAN 2: ANALISIS SAHAM
 # ==========================================================
 elif page == "🔍 Analisis Saham":
 
-    # Stock selector in sidebar is already available, add one here for clarity
     available_tickers = sorted(df["ticker"].unique())
 
     with st.sidebar:
         st.markdown("---")
         st.markdown("## 📊 Pilih Saham")
         selected_ticker = st.selectbox(
-            "Kode saham untuk analisis detail",
+            "Kode saham untuk analisis mendalam",
             available_tickers,
             help="Pilih saham yang ingin dianalisis secara mendalam",
         )
 
-    # Filter data
     stock_df = df[df["ticker"] == selected_ticker].copy().sort_values("date")
     anomaly_df = stock_df[stock_df["is_anomaly"] == True].copy()
 
@@ -1311,7 +1428,7 @@ elif page == "🔍 Analisis Saham":
         st.warning(f"⚠️ Data tidak tersedia untuk {selected_ticker}.")
         st.stop()
 
-    # --- Stock Header ---
+    # --- Header Saham ---
     latest = stock_df.iloc[-1]
     latest_close = latest["close"]
     latest_return = latest["daily_return"] * 100 if pd.notna(latest["daily_return"]) else 0
@@ -1320,6 +1437,7 @@ elif page == "🔍 Analisis Saham":
 
     change_class = "positive" if latest_return >= 0 else "negative"
     change_sign = "+" if latest_return >= 0 else ""
+    change_icon = "▲" if latest_return >= 0 else "▼"
     badge_html = get_risk_badge_html(latest_risk)
 
     st.markdown(f"""
@@ -1327,7 +1445,7 @@ elif page == "🔍 Analisis Saham":
     <div class="stock-ticker-big">{selected_ticker}</div>
     <div class="stock-info">
         <span class="stock-price">Rp {latest_close:,.0f}</span>
-        <span class="stock-change {change_class}">{change_sign}{latest_return:.2f}%</span>
+        <span class="stock-change {change_class}">{change_icon} {change_sign}{latest_return:.2f}%</span>
         <br>
         <span style="font-size:0.85rem; color: var(--text-secondary); margin-right: 0.5rem;">Skor: {latest_score:.2f}</span>
         {badge_html}
@@ -1336,12 +1454,12 @@ elif page == "🔍 Analisis Saham":
     """, unsafe_allow_html=True)
 
 
-    # --- Feature Breakdown Cards ---
+    # --- Rincian Fitur Terkini ---
     st.markdown("""
 <div class="section-header">
     <span class="section-header-icon">📊</span>
-    <span class="section-header-text">Breakdown Fitur Terbaru</span>
-    <span class="section-header-badge">LATEST</span>
+    <span class="section-header-text">Rincian Fitur Terkini</span>
+    <span class="section-header-badge">TERKINI</span>
 </div>
     """, unsafe_allow_html=True)
 
@@ -1350,11 +1468,12 @@ elif page == "🔍 Analisis Saham":
     with fc1:
         val = latest["daily_return"] * 100 if pd.notna(latest["daily_return"]) else 0
         color = "#55EFC4" if val >= 0 else "#FF8A8A"
+        icon = "▲" if val >= 0 else "▼"
         st.markdown(f"""
 <div class="feature-card">
-    <div class="feature-card-label">📈 Daily Return</div>
-    <div class="feature-card-value" style="color:{color};">{val:+.2f}%</div>
-    <div class="feature-card-desc">Perubahan harga close harian</div>
+    <div class="feature-card-label">📈 Imbal Hasil Harian</div>
+    <div class="feature-card-value" style="color:{color};">{icon} {val:+.2f}%</div>
+    <div class="feature-card-desc">Perubahan harga penutupan harian</div>
 </div>
         """, unsafe_allow_html=True)
 
@@ -1363,7 +1482,7 @@ elif page == "🔍 Analisis Saham":
         color = "#FF8A8A" if val >= 3 else "#A29BFE" if val >= 1.5 else "#55EFC4"
         st.markdown(f"""
 <div class="feature-card">
-    <div class="feature-card-label">⚡ Volume Spike Ratio</div>
+    <div class="feature-card-label">⚡ Rasio Lonjakan Volume</div>
     <div class="feature-card-value" style="color:{color};">{val:.2f}x</div>
     <div class="feature-card-desc">Dibanding rata-rata 20 hari</div>
 </div>
@@ -1373,9 +1492,9 @@ elif page == "🔍 Analisis Saham":
         val = latest["rolling_volatility_20"] * 100 if pd.notna(latest["rolling_volatility_20"]) else 0
         st.markdown(f"""
 <div class="feature-card">
-    <div class="feature-card-label">📉 Rolling Volatility 20</div>
+    <div class="feature-card-label">📉 Volatilitas 20 Hari</div>
     <div class="feature-card-value" style="color:#FDCB6E;">{val:.2f}%</div>
-    <div class="feature-card-desc">Volatilitas return 20 hari</div>
+    <div class="feature-card-desc">Volatilitas imbal hasil 20 hari</div>
 </div>
         """, unsafe_allow_html=True)
 
@@ -1384,21 +1503,23 @@ elif page == "🔍 Analisis Saham":
     with fc4:
         val = latest["return_zscore_20"] if pd.notna(latest["return_zscore_20"]) else 0
         color = "#FF8A8A" if abs(val) >= 2 else "#A29BFE" if abs(val) >= 1 else "#55EFC4"
+        icon = "▲" if val >= 0 else "▼"
         st.markdown(f"""
 <div class="feature-card">
-    <div class="feature-card-label">🎯 Return Z-score</div>
-    <div class="feature-card-value" style="color:{color};">{val:+.2f}</div>
-    <div class="feature-card-desc">Deviasi return dari pola 20 hari</div>
+    <div class="feature-card-label">🎯 <em>Z-Score</em> Imbal Hasil</div>
+    <div class="feature-card-value" style="color:{color};">{icon} {val:+.2f}</div>
+    <div class="feature-card-desc">Deviasi imbal hasil dari pola 20 hari</div>
 </div>
         """, unsafe_allow_html=True)
 
     with fc5:
         val = latest["volume_zscore_20"] if pd.notna(latest["volume_zscore_20"]) else 0
         color = "#FF8A8A" if abs(val) >= 2 else "#A29BFE" if abs(val) >= 1 else "#55EFC4"
+        icon = "▲" if val >= 0 else "▼"
         st.markdown(f"""
 <div class="feature-card">
-    <div class="feature-card-label">📦 Volume Z-score</div>
-    <div class="feature-card-value" style="color:{color};">{val:+.2f}</div>
+    <div class="feature-card-label">📦 <em>Z-Score</em> Volume</div>
+    <div class="feature-card-value" style="color:{color};">{icon} {val:+.2f}</div>
     <div class="feature-card-desc">Deviasi volume dari pola 20 hari</div>
 </div>
         """, unsafe_allow_html=True)
@@ -1406,23 +1527,35 @@ elif page == "🔍 Analisis Saham":
     with fc6:
         val = latest["price_gap_ma_20"] * 100 if pd.notna(latest["price_gap_ma_20"]) else 0
         color = "#FF8A8A" if abs(val) >= 8 else "#FDCB6E" if abs(val) >= 4 else "#55EFC4"
+        icon = "▲" if val >= 0 else "▼"
         st.markdown(f"""
 <div class="feature-card">
-    <div class="feature-card-label">📐 Price Gap MA20</div>
-    <div class="feature-card-value" style="color:{color};">{val:+.2f}%</div>
-    <div class="feature-card-desc">Jarak harga dari MA 20 hari</div>
+    <div class="feature-card-label">📐 Simpangan Harga MA20</div>
+    <div class="feature-card-value" style="color:{color};">{icon} {val:+.2f}%</div>
+    <div class="feature-card-desc">Jarak harga dari rata-rata bergerak 20 hari</div>
 </div>
         """, unsafe_allow_html=True)
 
 
-    # --- Candlestick Chart ---
+    # --- Grafik Candlestick ---
     st.markdown(f"""
 <div class="section-header">
     <span class="section-header-icon">🕯️</span>
-    <span class="section-header-text">Candlestick Chart — {selected_ticker}</span>
-    <span class="section-header-badge">INTERACTIVE</span>
+    <span class="section-header-text">Grafik <em>Candlestick</em> — {selected_ticker}</span>
+    <span class="section-header-badge">INTERAKTIF</span>
 </div>
     """, unsafe_allow_html=True)
+
+    selected_period = st.radio(
+        "Periode Grafik",
+        list(PERIOD_OPTIONS.keys()),
+        horizontal=True,
+        index=2,
+        label_visibility="collapsed",
+    )
+
+    chart_df = filter_chart_data(stock_df, selected_period)
+    chart_anomaly = chart_df[chart_df["is_anomaly"] == True]
 
     fig_price = go.Figure()
 
@@ -1431,11 +1564,11 @@ elif page == "🔍 Analisis Saham":
 
     fig_price.add_trace(
         go.Candlestick(
-            x=stock_df["date"],
-            open=stock_df["open"],
-            high=stock_df["high"],
-            low=stock_df["low"],
-            close=stock_df["close"],
+            x=chart_df["date"],
+            open=chart_df["open"],
+            high=chart_df["high"],
+            low=chart_df["low"],
+            close=chart_df["close"],
             name="OHLC",
             increasing_line_color=bullish_color,
             decreasing_line_color=bearish_color,
@@ -1444,11 +1577,11 @@ elif page == "🔍 Analisis Saham":
         )
     )
 
-    if not anomaly_df.empty:
+    if not chart_anomaly.empty:
         fig_price.add_trace(
             go.Scatter(
-                x=anomaly_df["date"],
-                y=anomaly_df["close"],
+                x=chart_anomaly["date"],
+                y=chart_anomaly["close"],
                 mode="markers",
                 marker=dict(
                     size=12,
@@ -1476,7 +1609,7 @@ elif page == "🔍 Analisis Saham":
     st.plotly_chart(fig_price, use_container_width=True)
 
 
-    # --- Volume Chart ---
+    # --- Grafik Volume ---
     st.markdown(f"""
 <div class="section-header">
     <span class="section-header-icon">📊</span>
@@ -1488,13 +1621,13 @@ elif page == "🔍 Analisis Saham":
 
     volume_colors = [
         "#FF6B6B" if row["is_anomaly"] else "rgba(108,92,231,0.5)"
-        for _, row in stock_df.iterrows()
+        for _, row in chart_df.iterrows()
     ]
 
     fig_volume.add_trace(
         go.Bar(
-            x=stock_df["date"],
-            y=stock_df["volume"],
+            x=chart_df["date"],
+            y=chart_df["volume"],
             name="Volume",
             marker=dict(
                 color=volume_colors,
@@ -1504,11 +1637,11 @@ elif page == "🔍 Analisis Saham":
         )
     )
 
-    if not anomaly_df.empty:
+    if not chart_anomaly.empty:
         fig_volume.add_trace(
             go.Scatter(
-                x=anomaly_df["date"],
-                y=anomaly_df["volume"],
+                x=chart_anomaly["date"],
+                y=chart_anomaly["volume"],
                 mode="markers",
                 marker=dict(
                     size=10,
@@ -1535,18 +1668,25 @@ elif page == "🔍 Analisis Saham":
     st.plotly_chart(fig_volume, use_container_width=True)
 
 
-    # --- Historical Anomaly Timeline ---
+    # --- Riwayat Anomali Saham ---
     st.markdown(f"""
 <div class="section-header">
     <span class="section-header-icon">📋</span>
     <span class="section-header-text">Riwayat Anomali — {selected_ticker}</span>
-    <span class="section-header-badge">{len(anomaly_df)} RECORDS</span>
+    <span class="section-header-badge">{len(anomaly_df)} CATATAN</span>
 </div>
     """, unsafe_allow_html=True)
 
     if anomaly_df.empty:
-        st.markdown("""
-<div class="status-pill success">✅ Tidak ada anomali terdeteksi pada saham ini dalam periode data</div>
+        st.markdown(f"""
+<div class="empty-state">
+    <div class="empty-state-icon">✅</div>
+    <div class="empty-state-title">Tidak Ada Anomali pada {selected_ticker}</div>
+    <div class="empty-state-desc">
+        Saham {selected_ticker} tidak menunjukkan anomali selama periode data yang tersedia.
+        Pola perdagangan saham ini berada dalam batas normal berdasarkan analisis historis.
+    </div>
+</div>
         """, unsafe_allow_html=True)
     else:
         anomaly_table = anomaly_df[
@@ -1572,15 +1712,15 @@ elif page == "🔍 Analisis Saham":
 
         anomaly_table = anomaly_table.rename(columns={
             "date": "📅 Tanggal",
-            "ticker": "🏷️ Ticker",
-            "close": "💰 Harga Close",
+            "ticker": "🏷️ Kode Saham",
+            "close": "💰 Harga Penutupan",
             "volume": "📊 Volume",
-            "daily_return": "📈 Return (%)",
-            "volume_spike_ratio": "⚡ Vol. Spike",
-            "price_range_pct": "📐 Range (%)",
+            "daily_return": "📈 Imbal Hasil (%)",
+            "volume_spike_ratio": "⚡ Lonjakan Vol.",
+            "price_range_pct": "📐 Rentang (%)",
             "anomaly_score_normalized": "🎯 Skor",
-            "risk_level": "🔰 Risk",
-            "anomaly_reason": "📝 Alasan",
+            "risk_level": "🔰 Tingkat Risiko",
+            "anomaly_reason": "📝 Indikasi Penyebab",
         })
 
         anomaly_table = anomaly_table.sort_values("🎯 Skor", ascending=False)
@@ -1589,20 +1729,36 @@ elif page == "🔍 Analisis Saham":
             anomaly_table,
             use_container_width=True,
             hide_index=True,
+            column_config={
+                "💰 Harga Penutupan": st.column_config.NumberColumn(format="Rp %.0f"),
+                "📊 Volume": st.column_config.NumberColumn(format="%.0f"),
+                "📈 Imbal Hasil (%)": st.column_config.NumberColumn(format="%.2f"),
+                "⚡ Lonjakan Vol.": st.column_config.NumberColumn(format="%.2f"),
+                "📐 Rentang (%)": st.column_config.NumberColumn(format="%.2f"),
+                "🎯 Skor": st.column_config.NumberColumn(format="%.3f"),
+            },
+        )
+
+        csv_stock_anomaly = anomaly_table.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Unduh Riwayat CSV",
+            data=csv_stock_anomaly,
+            file_name=f"riwayat_anomali_{selected_ticker}_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
         )
 
 
 # =========================
-# Footer (both pages)
+# Footer (kedua halaman)
 # =========================
 st.markdown(f"""
 <div class="footer">
     <p>
         <span class="live-dot"></span>
-        <strong style="color:#A29BFE;">IDX AI Market Surveillance Dashboard</strong> —
-        Dibuat untuk tujuan edukasi & riset<br>
-        Data bersumber dari Yahoo Finance • Auto-refresh setiap 5 menit • Tidak terafiliasi dengan BEI<br>
-        <span style="font-size:0.7rem;">Update terakhir: {last_update}</span>
+        <strong style="color:#A29BFE;">IDX AI Market Surveillance</strong> —
+        Dibuat untuk tujuan edukasi dan riset<br>
+        Data bersumber dari Yahoo Finance • Penyegaran otomatis setiap 5 menit • Tidak terafiliasi dengan BEI<br>
+        <span style="font-size:0.7rem;">Pemutakhiran terakhir: {last_update}</span>
     </p>
 </div>
 """, unsafe_allow_html=True)
