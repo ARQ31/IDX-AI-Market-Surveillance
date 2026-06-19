@@ -38,7 +38,7 @@ RISK_THRESHOLDS = {
 }
 
 # Cache TTL: data di-refresh setiap 30 menit (dalam detik)
-CACHE_TTL = 1800
+CACHE_TTL = 300
 
 # Auto-refresh interval: dashboard auto-reload setiap 5 menit (dalam milidetik)
 AUTO_REFRESH_INTERVAL_MS = 300_000
